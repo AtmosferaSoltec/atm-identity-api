@@ -19,17 +19,14 @@ client system -> GET /v1/persons/{dni}   (or /v1/companies/{ruc})
 Rules of the flow:
 
 - Callers never know or care where data came from. `meta.source` is informational only.
-- The database is the cache **and** the shared record: any system can **enrich** a record
-  (`PATCH`) with fields APIs Peru does not provide (birth date, email, phone, address,
-  district, ...). Missing values are stored as `NULL`, never as empty strings, so a later
-  enrichment by system A is visible to system B.
+- The database is only a cache of what APIs Peru returns. Nothing else is stored: no
+  client-supplied data and no enrichment. Systems keep their own extra customer data.
 - A document that APIs Peru cannot find is **not** stored; the API returns `404 DOCUMENT_NOT_FOUND`.
 - Two systems asking for the same new document at once must not cause two upstream calls
   or a duplicate row (`INSERT ... ON CONFLICT`, or a per-document lock).
-- Enrichment semantics: `PATCH` writes only the fields sent with a non-null value; omitted or
-  null fields never erase data. Last writer wins, every change is recorded in `record_changes`,
-  and `field_sources` records which source last wrote each column. A refresh from APIs Peru
-  (`?refresh=true`) only updates the columns APIs Peru owns, never client-enriched ones.
+- Stored fields only: persons = `document_number`, `first_names`, `paternal_surname`, `maternal_surname`;
+  companies = `document_number`, `legal_name`, `trade_name`, `address`. Do not add more without asking the owner.
+- Refresh (`?refresh=true`) calls APIs Peru again and overwrites the stored values.
 
 ## 2. Language: everything in English
 
@@ -44,8 +41,7 @@ Peruvian concepts keep a neutral English name:
 | apellido paterno | `paternal_surname` |
 | apellido materno | `maternal_surname` |
 | razon social / nombre comercial | `legal_name` / `trade_name` |
-| distrito / provincia / departamento | `district` / `province` / `department` |
-| direccion, fecha de nacimiento | `address`, `birth_date` |
+| direccion | `address` |
 
 Names are always stored **split** (never a single full-name column). A `full_name` may be
 computed in the response, never persisted.
@@ -86,7 +82,7 @@ Success:
 {
   "success": true,
   "data": { "document_number": "74455518", "first_names": "JOHN", "paternal_surname": "DOE",
-            "maternal_surname": "ROE", "birth_date": null, "email": null },
+            "maternal_surname": "ROE", "full_name": "JOHN DOE ROE" },
   "meta": { "request_id": "b1f0...", "source": "database" }
 }
 ```
@@ -127,9 +123,7 @@ All under `/v1`, all requiring `X-API-Key` except `/health`.
 |---|---|---|
 | GET | `/health` | liveness, no auth |
 | GET | `/v1/persons/{document_number}` | resolve a DNI (`?refresh=true` forces upstream) |
-| PATCH | `/v1/persons/{document_number}` | enrich a person |
 | GET | `/v1/companies/{document_number}` | resolve a RUC |
-| PATCH | `/v1/companies/{document_number}` | enrich a company |
 
 Each consuming system has a row in `client_systems` with a hashed API key (`code` like `hotel`),
 so we know who read or wrote what and can revoke one key alone.
@@ -160,7 +154,5 @@ so we know who read or wrote what and can revoke one key alone.
   Run: `TEST_DATABASE_URL=<url> go test -race ./...`
 - Run locally: `go run ./cmd/server` (applies migrations on start). Subcommands: `migrate`,
   `create-client-system <code> <name>` (prints the API key once).
-- PATCH accepts only enrichable fields (persons: birth_date, sex, email, phone, address, district,
-  province, department, ubigeo; companies: the same without birth_date/sex). Unknown fields are a
-  `VALIDATION_FAILED`; empty strings are rejected (omit the field instead).
+
 - Keep changes small and in the layout above. Do not reopen decisions in this file without asking the owner.

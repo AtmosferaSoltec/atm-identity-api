@@ -19,26 +19,17 @@ var ErrNotFound = errors.New("apisperu: document not found")
 var ErrTimeout = errors.New("apisperu: timeout")
 
 type Person struct {
-	DocumentNumber    string
-	FirstNames        string
-	PaternalSurname   string
-	MaternalSurname   string
-	VerificationDigit string
+	DocumentNumber  string
+	FirstNames      string
+	PaternalSurname string
+	MaternalSurname string
 }
 
 type Company struct {
-	DocumentNumber    string
-	LegalName         string
-	TradeName         string
-	CompanyType       string
-	TaxpayerStatus    string
-	TaxpayerCondition string
-	Address           string
-	District          string
-	Province          string
-	Department        string
-	Ubigeo            string
-	Phone             string
+	DocumentNumber string
+	LegalName      string
+	TradeName      string
+	Address        string
 }
 
 // Lookup is the port used by the services, so tests can fake the upstream.
@@ -58,29 +49,15 @@ func NewClient(baseURL, token string, timeout time.Duration) *Client {
 }
 
 type personResponse struct {
-	Success          *bool  `json:"success"`
-	DNI              string `json:"dni"`
-	Nombres          string `json:"nombres"`
-	ApellidoPaterno  string `json:"apellidoPaterno"`
-	ApellidoMaterno  string `json:"apellidoMaterno"`
-	CodVerificaLetra string `json:"codVerificaLetra"`
-	CodVerifica      any    `json:"codVerifica"`
+	Nombres         string `json:"nombres"`
+	ApellidoPaterno string `json:"apellidoPaterno"`
+	ApellidoMaterno string `json:"apellidoMaterno"`
 }
 
 type companyResponse struct {
-	Success         *bool    `json:"success"`
-	RUC             string   `json:"ruc"`
-	RazonSocial     string   `json:"razonSocial"`
-	NombreComercial string   `json:"nombreComercial"`
-	Tipo            string   `json:"tipo"`
-	Estado          string   `json:"estado"`
-	Condicion       string   `json:"condicion"`
-	Direccion       string   `json:"direccion"`
-	Departamento    string   `json:"departamento"`
-	Provincia       string   `json:"provincia"`
-	Distrito        string   `json:"distrito"`
-	Ubigeo          string   `json:"ubigeo"`
-	Telefonos       []string `json:"telefonos"`
+	RazonSocial     string `json:"razonSocial"`
+	NombreComercial string `json:"nombreComercial"`
+	Direccion       string `json:"direccion"`
 }
 
 func (c *Client) Person(ctx context.Context, documentNumber string) (*Person, error) {
@@ -92,11 +69,10 @@ func (c *Client) Person(ctx context.Context, documentNumber string) (*Person, er
 		return nil, ErrNotFound
 	}
 	return &Person{
-		DocumentNumber:    documentNumber,
-		FirstNames:        r.Nombres,
-		PaternalSurname:   r.ApellidoPaterno,
-		MaternalSurname:   r.ApellidoMaterno,
-		VerificationDigit: r.CodVerificaLetra,
+		DocumentNumber:  documentNumber,
+		FirstNames:      r.Nombres,
+		PaternalSurname: r.ApellidoPaterno,
+		MaternalSurname: r.ApellidoMaterno,
 	}, nil
 }
 
@@ -108,15 +84,11 @@ func (c *Client) Company(ctx context.Context, documentNumber string) (*Company, 
 	if r.RazonSocial == "" {
 		return nil, ErrNotFound
 	}
-	phone := ""
-	if len(r.Telefonos) > 0 {
-		phone = r.Telefonos[0]
-	}
 	return &Company{
-		DocumentNumber: documentNumber, LegalName: r.RazonSocial, TradeName: r.NombreComercial,
-		CompanyType: r.Tipo, TaxpayerStatus: r.Estado, TaxpayerCondition: r.Condicion,
-		Address: r.Direccion, District: r.Distrito, Province: r.Provincia, Department: r.Departamento,
-		Ubigeo: r.Ubigeo, Phone: phone,
+		DocumentNumber: documentNumber,
+		LegalName:      r.RazonSocial,
+		TradeName:      r.NombreComercial,
+		Address:        r.Direccion,
 	}, nil
 }
 

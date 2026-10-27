@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Runs against a real Postgres (TEST_DATABASE_URL, migrated). Skipped otherwise.
+// Runs against a real, migrated Postgres (TEST_DATABASE_URL). Skipped otherwise.
 // It only touches document numbers starting with 9999 and cleans up after itself.
 
 type fakeUpstream struct {
@@ -32,6 +32,7 @@ func (f *fakeUpstream) Person(ctx context.Context, doc string) (*apisperu.Person
 	p.DocumentNumber = doc
 	return &p, nil
 }
+
 func (f *fakeUpstream) Company(ctx context.Context, doc string) (*apisperu.Company, error) {
 	return nil, apisperu.ErrNotFound
 }
@@ -48,8 +49,6 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	cleanup := func() {
-		_, _ = pool.Exec(context.Background(),
-			`DELETE FROM record_changes WHERE entity_type='person' AND entity_id IN (SELECT id FROM persons WHERE document_number LIKE '9999%')`)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM persons WHERE document_number LIKE '9999%'`)
 	}
 	cleanup()
@@ -57,60 +56,33 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func strp(s string) *string { return &s }
-
-func TestResolveCachesAndEnriches(t *testing.T) {
+func TestResolveStoresOnceAndRefreshes(t *testing.T) {
 	pool := testPool(t)
 	up := &fakeUpstream{person: &apisperu.Person{FirstNames: "ANA", PaternalSurname: "PEREZ", MaternalSurname: "LOPEZ"}}
 	svc := NewService(NewRepository(pool), up)
 	ctx := context.Background()
 
 	p, source, err := svc.Resolve(ctx, "99990001", false)
-	if err != nil || source != SourceUpstream || p.FirstNames != "ANA" || p.Email != nil {
+	if err != nil || source != SourceUpstream || p.FullName != "ANA PEREZ LOPEZ" {
 		t.Fatalf("first resolve: %+v %s %v", p, source, err)
 	}
-	if _, source, _ = svc.Resolve(ctx, "99990001", false); source != SourceDatabase || up.calls.Load() != 1 {
-		t.Fatalf("second resolve must come from the database (source=%s calls=%d)", source, up.calls.Load())
+	for i := 0; i < 9; i++ {
+		if _, source, _ = svc.Resolve(ctx, "99990001", false); source != SourceDatabase {
+			t.Fatalf("resolve %d must come from the database, got %s", i+2, source)
+		}
+	}
+	if n := up.calls.Load(); n != 1 {
+		t.Fatalf("10 lookups must cost 1 upstream call, got %d", n)
 	}
 
-	// Enrichment by "hotel", read back by anyone.
-	p, err = svc.Patch(ctx, "99990001", "hotel", PatchInput{Email: strp("ana@x.pe"), BirthDate: strp("1990-05-17"), Phone: strp("999888777")})
-	if err != nil || *p.Email != "ana@x.pe" || *p.BirthDate != "1990-05-17" {
-		t.Fatalf("patch: %+v %v", p, err)
-	}
-	// Omitted fields never erase; a second system adds others.
-	p, err = svc.Patch(ctx, "99990001", "iris", PatchInput{District: strp("MIRAFLORES")})
-	if err != nil || *p.Email != "ana@x.pe" || *p.District != "MIRAFLORES" {
-		t.Fatalf("second patch must keep earlier data: %+v %v", p, err)
-	}
-
-	var sources string
-	_ = pool.QueryRow(ctx, `SELECT field_sources->>'email' FROM persons WHERE document_number='99990001'`).Scan(&sources)
-	if sources != "system:hotel" {
-		t.Fatalf("field_sources email = %q", sources)
-	}
-	var audit int
-	_ = pool.QueryRow(ctx, `SELECT count(*) FROM record_changes rc JOIN persons p ON p.id=rc.entity_id WHERE rc.entity_type='person' AND p.document_number='99990001'`).Scan(&audit)
-	if audit != 2 {
-		t.Fatalf("want 2 audit rows, got %d", audit)
-	}
-
-	// Identical patch is a no-op (no extra audit row).
-	_, _ = svc.Patch(ctx, "99990001", "hotel", PatchInput{Email: strp("ana@x.pe")})
-	_ = pool.QueryRow(ctx, `SELECT count(*) FROM record_changes rc JOIN persons p ON p.id=rc.entity_id WHERE p.document_number='99990001'`).Scan(&audit)
-	if audit != 2 {
-		t.Fatalf("no-op patch must not audit, got %d rows", audit)
-	}
-
-	// Refresh updates upstream-owned columns but keeps enriched ones.
 	up.person = &apisperu.Person{FirstNames: "ANA MARIA", PaternalSurname: "PEREZ", MaternalSurname: "LOPEZ"}
 	p, source, err = svc.Resolve(ctx, "99990001", true)
-	if err != nil || source != SourceUpstream || p.FirstNames != "ANA MARIA" || *p.Email != "ana@x.pe" {
+	if err != nil || source != SourceUpstream || p.FirstNames != "ANA MARIA" {
 		t.Fatalf("refresh: %+v %s %v", p, source, err)
 	}
 }
 
-func TestResolveSingleUpstreamCallUnderConcurrency(t *testing.T) {
+func TestResolveSingleRowUnderConcurrency(t *testing.T) {
 	pool := testPool(t)
 	up := &fakeUpstream{person: &apisperu.Person{FirstNames: "LUIS", PaternalSurname: "DIAZ"}}
 	svc := NewService(NewRepository(pool), up)
@@ -136,7 +108,7 @@ func TestResolveSingleUpstreamCallUnderConcurrency(t *testing.T) {
 	}
 }
 
-func TestErrors(t *testing.T) {
+func TestUpstreamErrors(t *testing.T) {
 	pool := testPool(t)
 	up := &fakeUpstream{err: apisperu.ErrNotFound}
 	svc := NewService(NewRepository(pool), up)
@@ -155,14 +127,5 @@ func TestErrors(t *testing.T) {
 	up.err = apisperu.ErrTimeout
 	if _, _, err = svc.Resolve(ctx, "99990003", false); err.(*apierror.Error).Code != apierror.CodeUpstreamTimeout {
 		t.Fatalf("want UPSTREAM_TIMEOUT, got %v", err)
-	}
-
-	_, err = svc.Patch(ctx, "99990003", "hotel", PatchInput{Email: strp("x@y.pe")})
-	if err.(*apierror.Error).Code != apierror.CodeDocumentNotFound {
-		t.Fatalf("patch on unknown document: %v", err)
-	}
-	_, err = svc.Patch(ctx, "99990003", "hotel", PatchInput{Email: strp("bad"), Sex: strp("x")})
-	if e := err.(*apierror.Error); e.Code != apierror.CodeValidationFailed || len(e.Details) != 2 {
-		t.Fatalf("want 2 validation details, got %v", err)
 	}
 }

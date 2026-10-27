@@ -3,10 +3,8 @@ package companies
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"atm-identity-api/internal/apisperu"
-	"atm-identity-api/internal/enrichment"
 	"atm-identity-api/internal/platform/apierror"
 
 	"golang.org/x/sync/singleflight"
@@ -75,24 +73,4 @@ func (s *Service) fetch(ctx context.Context, documentNumber string, refresh bool
 		return nil, apierror.Internal(err)
 	}
 	return p, nil
-}
-
-// Patch enriches an existing record on behalf of clientCode and returns it.
-func (s *Service) Patch(ctx context.Context, documentNumber, clientCode string, in PatchInput) (*Company, error) {
-	if details := in.validate(); len(details) > 0 {
-		return nil, apierror.ValidationFailed(details...)
-	}
-	err := enrichment.Apply(ctx, s.repo.pool, target, documentNumber, clientCode, in.updates())
-	if errors.Is(err, enrichment.ErrNotFound) {
-		return nil, apierror.New(http.StatusNotFound, apierror.CodeDocumentNotFound,
-			"Document is not registered yet. Resolve it with GET first.")
-	}
-	if err != nil {
-		return nil, apierror.Internal(err)
-	}
-	r, err := s.repo.Find(ctx, documentNumber)
-	if err != nil {
-		return nil, apierror.Internal(err)
-	}
-	return r, nil
 }

@@ -22,26 +22,26 @@ func TestPersonMapsSpanishFields(t *testing.T) {
 		if r.URL.Path != "/dni/74455518" || r.URL.Query().Get("token") != "secret-token" {
 			t.Errorf("unexpected request %s", r.URL.String())
 		}
-		_, _ = w.Write([]byte(`{"success":true,"dni":"74455518","nombres":"JOEL JOAS","apellidoPaterno":"MALDONADO","apellidoMaterno":"FERNANDEZ","codVerifica":9,"codVerificaLetra":"C"}`))
+		_, _ = w.Write([]byte(`{"success":true,"dni":"74455518","nombres":"JOEL JOAS","apellidoPaterno":"MALDONADO","apellidoMaterno":"FERNANDEZ"}`))
 	})
 	p, err := c.Person(context.Background(), "74455518")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.FirstNames != "JOEL JOAS" || p.PaternalSurname != "MALDONADO" || p.MaternalSurname != "FERNANDEZ" || p.VerificationDigit != "C" {
+	if p.FirstNames != "JOEL JOAS" || p.PaternalSurname != "MALDONADO" || p.MaternalSurname != "FERNANDEZ" {
 		t.Fatalf("bad mapping: %+v", p)
 	}
 }
 
 func TestCompanyMapsSpanishFields(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"ruc":"20131312955","razonSocial":"SUNAT","estado":"ACTIVO","condicion":"HABIDO","distrito":"LIMA","telefonos":["123456"]}`))
+		_, _ = w.Write([]byte(`{"ruc":"20131312955","razonSocial":"SUNAT","nombreComercial":"-","direccion":"AV. X 123"}`))
 	})
 	co, err := c.Company(context.Background(), "20131312955")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if co.LegalName != "SUNAT" || co.TaxpayerStatus != "ACTIVO" || co.District != "LIMA" || co.Phone != "123456" {
+	if co.LegalName != "SUNAT" || co.TradeName != "-" || co.Address != "AV. X 123" {
 		t.Fatalf("bad mapping: %+v", co)
 	}
 }
