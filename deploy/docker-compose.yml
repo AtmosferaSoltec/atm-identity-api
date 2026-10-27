@@ -1,0 +1,50 @@
+# Production stack. Copied to /opt/identity-api by GitHub Actions on every
+# deploy; never edited by hand on the server.
+#
+# It never builds: the image is built once in CI and published to GHCR.
+# The real .env lives only on the server (/opt/identity-api/.env).
+#
+# No database here: PostgreSQL is a separate stack (`atm-postgres`) reachable
+# through the external network `atm-network`. In DATABASE_URL the host is the
+# container name, not localhost.
+
+networks:
+  shared:
+    name: atm-network
+    external: true
+
+services:
+  # Applies pending migrations and exits. `app` does not start until this ends
+  # successfully, so a broken migration blocks the deploy.
+  migrate:
+    image: ghcr.io/atmosferasoltec/atm-identity-api:${IMAGE_TAG:-latest}
+    command: ["migrate"]
+    env_file: .env
+    networks:
+      - shared
+    restart: "no"
+
+  app:
+    image: ghcr.io/atmosferasoltec/atm-identity-api:${IMAGE_TAG:-latest}
+    container_name: identity-api
+    env_file: .env
+    environment:
+      APP_ENV: production
+      PORT: "8080"
+    # Loopback only: nginx publishes it to the outside.
+    ports:
+      - "127.0.0.1:3072:8080"
+    networks:
+      - shared
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/identity-api", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m

@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+docs
+*.md
+bin
+dist
+identity-api
+identity-api-linux
