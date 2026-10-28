@@ -111,7 +111,9 @@ Error:
 | 403 | `FORBIDDEN` | key valid but inactive or not allowed |
 | 404 | `DOCUMENT_NOT_FOUND` | not in database and not found upstream |
 | 429 | `RATE_LIMITED` | too many requests |
-| 502 | `UPSTREAM_FAILED` | APIs Peru returned an error |
+| 503 | `UPSTREAM_QUOTA_EXCEEDED` | provider quota exhausted, or our own monthly cap reached: callers should let the user type the data |
+| 503 | `UPSTREAM_UNAUTHORIZED` | the provider rejected our token (invalid/expired): fix the token |
+| 502 | `UPSTREAM_FAILED` | APIs Peru returned another error |
 | 504 | `UPSTREAM_TIMEOUT` | APIs Peru timed out |
 | 500 | `INTERNAL_ERROR` | anything unexpected |
 
@@ -127,6 +129,19 @@ All under `/v1`, all requiring `X-API-Key` except `/health`.
 
 Each consuming system has a row in `client_systems` with a hashed API key (`code` like `hotel`),
 so we know who read or wrote what and can revoke one key alone.
+
+## 6.1 Provider quota (APIs Peru)
+
+- Free plan: 1000 queries/month (paid plan: unlimited), per https://apisperu.com/servicios/dniruc.
+  Confirm the owner's actual plan in the provider dashboard.
+- `internal/lookup.Guard` counts every upstream call per provider and calendar month (America/Lima)
+  in `provider_usage`, atomically, and refuses the call once `APISPERU_MONTHLY_LIMIT` (default 900) is
+  reached. It logs a warning at 80% and an error at the cap. Stored documents keep resolving.
+- Documents the provider says do not exist are remembered 24 h (`lookup_misses`) and cost no more calls.
+- `?refresh=true` only calls the provider if the stored record is older than 24 h.
+- The provider's exact quota-exhausted response is undocumented: `apisperu` maps 402/429 and any
+  error message mentioning limit/quota/consultas to `ErrQuotaExceeded`. Adjust once seen for real.
+- A second provider would implement `apisperu.Lookup` and get its own `Guard`; not built yet.
 
 ## 7. Database rules
 

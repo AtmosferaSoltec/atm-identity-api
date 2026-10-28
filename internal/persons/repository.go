@@ -20,9 +20,9 @@ var errNotFound = errors.New("person not found")
 func (r *Repository) Find(ctx context.Context, documentNumber string) (*Person, error) {
 	var p Person
 	err := r.pool.QueryRow(ctx, `
-		SELECT document_number, first_names, paternal_surname, maternal_surname, created_at, updated_at
+		SELECT document_number, first_names, paternal_surname, maternal_surname, looked_up_at, created_at, updated_at
 		FROM persons WHERE document_number = $1`, documentNumber).
-		Scan(&p.DocumentNumber, &p.FirstNames, &p.PaternalSurname, &p.MaternalSurname, &p.CreatedAt, &p.UpdatedAt)
+		Scan(&p.DocumentNumber, &p.FirstNames, &p.PaternalSurname, &p.MaternalSurname, &p.LookedUpAt, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
 	}

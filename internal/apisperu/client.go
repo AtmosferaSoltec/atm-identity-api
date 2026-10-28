@@ -7,13 +7,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 )
 
 // ErrNotFound means the upstream has no record for the document.
 var ErrNotFound = errors.New("apisperu: document not found")
+
+// ErrQuotaExceeded means the provider refused the call because the plan's quota is used up.
+var ErrQuotaExceeded = errors.New("apisperu: quota exceeded")
+
+// ErrUnauthorized means the provider rejected our token (invalid, expired or disabled).
+var ErrUnauthorized = errors.New("apisperu: unauthorized")
 
 // ErrTimeout means the upstream did not answer in time.
 var ErrTimeout = errors.New("apisperu: timeout")
@@ -109,14 +117,35 @@ func (c *Client) get(ctx context.Context, kind, documentNumber string, out any) 
 	}
 	defer resp.Body.Close()
 
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return ErrNotFound
-	case resp.StatusCode >= 400:
-		return fmt.Errorf("apisperu: unexpected status %d", resp.StatusCode)
+	if resp.StatusCode >= 400 {
+		return classifyError(resp)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("apisperu: decode response: %w", err)
 	}
 	return nil
+}
+
+var quotaWords = regexp.MustCompile(`(?i)l[ií]mite|cuota|excedi|agot|consultas|quota|limit`)
+
+// classifyError maps a failed response to a sentinel error. The provider does not
+// document its quota response, so besides 402/429 we also look at the message.
+func classifyError(resp *http.Response) error {
+	var body struct {
+		Message string `json:"message"`
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	_ = json.Unmarshal(raw, &body)
+
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return ErrNotFound
+	case resp.StatusCode == http.StatusPaymentRequired, resp.StatusCode == http.StatusTooManyRequests,
+		quotaWords.MatchString(body.Message):
+		return ErrQuotaExceeded
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		return ErrUnauthorized
+	default:
+		return fmt.Errorf("apisperu: unexpected status %d", resp.StatusCode)
+	}
 }

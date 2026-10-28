@@ -81,3 +81,31 @@ func TestTimeout(t *testing.T) {
 		t.Fatalf("want ErrTimeout, got %v", err)
 	}
 }
+
+func TestErrorClassification(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   error
+	}{
+		{"invalid token", 401, `{"message":"Token inválido."}`, ErrUnauthorized},
+		{"forbidden", 403, `{"message":"Acceso denegado"}`, ErrUnauthorized},
+		{"too many requests", 429, `{}`, ErrQuotaExceeded},
+		{"payment required", 402, `{}`, ErrQuotaExceeded},
+		{"quota message on 401", 401, `{"message":"Has superado el límite de consultas del mes"}`, ErrQuotaExceeded},
+		{"quota message on 403", 403, `{"message":"Cuota agotada"}`, ErrQuotaExceeded},
+		{"not found", 404, `{}`, ErrNotFound},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(c.status)
+				_, _ = w.Write([]byte(c.body))
+			})
+			if _, err := client.Person(context.Background(), "74455518"); !errors.Is(err, c.want) {
+				t.Fatalf("got %v, want %v", err, c.want)
+			}
+		})
+	}
+}

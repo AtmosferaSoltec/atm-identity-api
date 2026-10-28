@@ -14,6 +14,7 @@ import (
 
 	"atm-identity-api/internal/apisperu"
 	"atm-identity-api/internal/companies"
+	"atm-identity-api/internal/lookup"
 	"atm-identity-api/internal/persons"
 	"atm-identity-api/internal/platform/apiresponse"
 	"atm-identity-api/internal/platform/auth"
@@ -102,6 +103,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool) error {
 	}
 	upstream := apisperu.NewClient(cfg.APIsPeruBaseURL, cfg.APIsPeruToken, cfg.APIsPeruTimeout)
 
+	// One shared monthly budget for the provider, across DNI and RUC lookups.
+	guard := lookup.NewGuard(pool, "apisperu", cfg.APIsPeruMonthlyLimit)
+
 	router := gin.New()
 	router.Use(middleware.RequestID(), middleware.Logger(), middleware.Recovery())
 	router.NoRoute(middleware.NotFound)
@@ -111,8 +115,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool) error {
 	})
 
 	v1 := router.Group("/v1", auth.Middleware(pool))
-	persons.NewHandler(persons.NewService(persons.NewRepository(pool), upstream)).Register(v1)
-	companies.NewHandler(companies.NewService(companies.NewRepository(pool), upstream)).Register(v1)
+	persons.NewHandler(persons.NewService(persons.NewRepository(pool), upstream, guard)).Register(v1)
+	companies.NewHandler(companies.NewService(companies.NewRepository(pool), upstream, guard)).Register(v1)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router, ReadHeaderTimeout: 5 * time.Second}
 	go func() {

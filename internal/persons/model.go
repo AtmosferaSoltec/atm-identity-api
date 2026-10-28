@@ -9,6 +9,7 @@ type Person struct {
 	PaternalSurname string    `json:"paternal_surname"`
 	MaternalSurname *string   `json:"maternal_surname"`
 	FullName        string    `json:"full_name"`
+	LookedUpAt      time.Time `json:"-"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

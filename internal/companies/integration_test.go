@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"atm-identity-api/internal/apisperu"
+	"atm-identity-api/internal/lookup"
 	"atm-identity-api/internal/platform/apierror"
 	"atm-identity-api/internal/platform/database"
 )
@@ -44,12 +45,16 @@ func TestResolveStoresOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	cleanup := func() { _, _ = pool.Exec(ctx, `DELETE FROM companies WHERE document_number LIKE '9999%'`) }
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM companies WHERE document_number LIKE '9999%'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM lookup_misses WHERE document_type='ruc' AND document_number LIKE '9999%'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM provider_usage WHERE provider = 'test-companies'`)
+	}
 	cleanup()
 	defer cleanup()
 
 	up := &fakeUpstream{company: &apisperu.Company{LegalName: "ACME SAC", TradeName: "ACME", Address: "AV. X 123"}}
-	svc := NewService(NewRepository(pool), up)
+	svc := NewService(NewRepository(pool), up, lookup.NewGuard(pool, "test-companies", 1000))
 
 	c, source, err := svc.Resolve(ctx, "99999999901", false)
 	if err != nil || source != SourceUpstream || c.LegalName != "ACME SAC" || *c.Address != "AV. X 123" {

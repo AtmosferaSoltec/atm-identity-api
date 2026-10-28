@@ -19,9 +19,9 @@ var errNotFound = errors.New("company not found")
 func (r *Repository) Find(ctx context.Context, documentNumber string) (*Company, error) {
 	var c Company
 	err := r.pool.QueryRow(ctx, `
-		SELECT document_number, legal_name, trade_name, address, created_at, updated_at
+		SELECT document_number, legal_name, trade_name, address, looked_up_at, created_at, updated_at
 		FROM companies WHERE document_number = $1`, documentNumber).
-		Scan(&c.DocumentNumber, &c.LegalName, &c.TradeName, &c.Address, &c.CreatedAt, &c.UpdatedAt)
+		Scan(&c.DocumentNumber, &c.LegalName, &c.TradeName, &c.Address, &c.LookedUpAt, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errNotFound
 	}

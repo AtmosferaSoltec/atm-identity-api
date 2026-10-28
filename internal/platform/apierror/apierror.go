@@ -18,6 +18,8 @@ const (
 	CodeRateLimited           Code = "RATE_LIMITED"
 	CodeUpstreamFailed        Code = "UPSTREAM_FAILED"
 	CodeUpstreamTimeout       Code = "UPSTREAM_TIMEOUT"
+	CodeUpstreamQuotaExceeded Code = "UPSTREAM_QUOTA_EXCEEDED"
+	CodeUpstreamUnauthorized  Code = "UPSTREAM_UNAUTHORIZED"
 	CodeInternal              Code = "INTERNAL_ERROR"
 )
 
@@ -70,6 +72,19 @@ func UpstreamFailed(cause error) *Error {
 
 func UpstreamTimeout(cause error) *Error {
 	return New(http.StatusGatewayTimeout, CodeUpstreamTimeout, "The upstream provider timed out.").WithCause(cause)
+}
+
+// UpstreamQuotaExceeded: the provider's monthly quota is used up (or our own
+// limit for it was reached). Client systems should let the user type the data.
+func UpstreamQuotaExceeded(cause error) *Error {
+	return New(http.StatusServiceUnavailable, CodeUpstreamQuotaExceeded,
+		"The lookup provider quota is exhausted for now. Enter the data manually.").WithCause(cause)
+}
+
+// UpstreamUnauthorized: our credentials for the provider were rejected.
+func UpstreamUnauthorized(cause error) *Error {
+	return New(http.StatusServiceUnavailable, CodeUpstreamUnauthorized,
+		"The lookup provider is unavailable. Enter the data manually.").WithCause(cause)
 }
 
 func Internal(cause error) *Error {

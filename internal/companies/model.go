@@ -8,6 +8,7 @@ type Company struct {
 	LegalName      string    `json:"legal_name"`
 	TradeName      *string   `json:"trade_name"`
 	Address        *string   `json:"address"`
+	LookedUpAt     time.Time `json:"-"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
