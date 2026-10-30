@@ -45,6 +45,14 @@ IDENTITY_API_KEY=atm_...        # created for that system, see section 3
 
 Send the key in the `X-API-Key` header on every `/v1` request.
 
+### Preferred: the system's service token
+
+If the system already has its credential in ATM-Auth-API (console → system → "Generar credencial"),
+it needs no key here. Its backend asks auth for a token (`POST /v1/token`, `client_id` = system code)
+and sends it as `Authorization: Bearer <token>`. The service validates it locally; the system code in
+the token is what shows up in the logs. Enable it by setting `AUTH_PUBLIC_KEY_BASE64` and `AUTH_ISSUER`
+(the public key and issuer of auth-api) in the server `.env`. `X-API-Key` keeps working meanwhile.
+
 > Tip: if the system runs in a container on the Docker network `atm-network`, it can use
 > `http://identity-api:8080` instead of the public URL (faster, no Cloudflare hop).
 

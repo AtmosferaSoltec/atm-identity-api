@@ -114,7 +114,17 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool) error {
 		apiresponse.OK(c, gin.H{"status": "up"}, "")
 	})
 
-	v1 := router.Group("/v1", auth.Middleware(pool))
+	var verifier *auth.TokenVerifier
+	if cfg.AuthPublicKeyBase64 != "" {
+		var err error
+		if verifier, err = auth.NewTokenVerifier(cfg.AuthPublicKeyBase64, cfg.AuthIssuer); err != nil {
+			return err
+		}
+	} else {
+		slog.Warn("AUTH_PUBLIC_KEY_BASE64 not set: only the legacy X-API-Key is accepted")
+	}
+
+	v1 := router.Group("/v1", auth.Middleware(pool, verifier))
 	persons.NewHandler(persons.NewService(persons.NewRepository(pool), upstream, guard)).Register(v1)
 	companies.NewHandler(companies.NewService(companies.NewRepository(pool), upstream, guard)).Register(v1)
 

@@ -59,7 +59,7 @@ func InvalidDocumentNumber(message string) *Error {
 }
 
 func Unauthorized() *Error {
-	return New(http.StatusUnauthorized, CodeUnauthorized, "Missing or invalid API key.")
+	return New(http.StatusUnauthorized, CodeUnauthorized, "Missing or invalid credentials.")
 }
 
 func DocumentNotFound() *Error {

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"atm-identity-api/internal/platform/apierror"
 	"atm-identity-api/internal/platform/apiresponse"
@@ -43,8 +44,29 @@ func CreateClientSystem(ctx context.Context, pool *pgxpool.Pool, code, name stri
 	return key, nil
 }
 
-// Middleware rejects requests without a valid, active API key.
-func Middleware(pool *pgxpool.Pool) gin.HandlerFunc {
+// Middleware authenticates a consuming system. The preferred way is the service
+// token of ATM-Auth-API (Authorization: Bearer); the legacy X-API-Key keeps
+// working while systems migrate. verifier may be nil, which disables tokens.
+func Middleware(pool *pgxpool.Pool, verifier *TokenVerifier) gin.HandlerFunc {
+	legacy := apiKeyMiddleware(pool)
+	return func(c *gin.Context) {
+		parts := strings.Fields(c.GetHeader("Authorization"))
+		if verifier == nil || len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			legacy(c)
+			return
+		}
+		code, err := verifier.SystemCode(parts[1])
+		if err != nil {
+			apiresponse.Fail(c, apierror.Unauthorized())
+			return
+		}
+		c.Set(ClientSystemKey, code)
+		c.Next()
+	}
+}
+
+// apiKeyMiddleware rejects requests without a valid, active API key.
+func apiKeyMiddleware(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.GetHeader("X-API-Key")
 		if key == "" {
